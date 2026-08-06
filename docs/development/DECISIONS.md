@@ -396,14 +396,99 @@ v1.0 (2 months):  Stable release, production-ready
 
 ---
 
+---
+
+## ADR-013: Why Rule Metadata and Priority System in v0.2?
+
+**Decision**: Implement RuleMetadata and priority-based execution in v0.2 before adding many rules.
+
+**Rationale**:
+- 10+ rules without priority leads to unpredictable behavior
+- Metadata enables rule discovery and filtering (future: "show me all FUNCTION_CONVERSION rules")
+- Priority allows critical rules to execute first (e.g., fix Oracle syntax before type conversions)
+- Reflection-based metadata avoids code duplication
+- Record-based immutability ensures thread safety for multi-threaded scenarios
+
+**Why Record Instead of Class?**
+- Java 21 records eliminate boilerplate
+- Immutable by default (value semantics)
+- Compact constructor for validation
+- All getters auto-generated
+- Cleaner, more intentional design
+
+**Why @Rule Annotation?**
+- Declarative approach: specify metadata at the rule definition site
+- One source of truth: metadata colocated with implementation
+- No ceremony: Reflection extracts it at registration time
+- Backward compatible: default metadata for rules without annotation
+- Enables future tooling (IDE hints, rule discovery UIs)
+
+**Why Stable Priority Sort?**
+- Rules with same priority maintain registration order (predictable)
+- Test order equals execution order (easier debugging)
+- No hidden dependencies between rules
+- FIFO for same-priority rules (fair, deterministic)
+
+**Alternative Considered**: Hardcoded execution order
+- ❌ Doesn't scale (50+ rules = chaos)
+- ❌ Hidden dependencies between rules
+- ❌ Hard to test priority interactions
+- ❌ Forces one person to manage all rule ordering
+
+**What NOT Included in v0.2** (defer to later versions):
+- ❌ SqlRuleException (v0.4+ parser phase)
+- ❌ ConfidenceLevel (v0.6 validation phase)
+- ❌ getMetadata() on SqlRule interface (separation of concerns)
+- ❌ Rule enable/disable (v0.6+)
+- ❌ Rule configuration file loading (v0.8+)
+
+**Scope Discipline**:
+- v0.2 = Metadata + Priority only
+- Focused, testable, complete
+- Sets foundation for future enhancements
+
+**Impact on v0.3+**:
+- v0.3 rules use priority to control execution order
+- v0.6 validation can add confidence scoring to metadata
+- v0.7 reporting can display rule categories and priorities
+- v0.8+ configuration loading builds on this foundation
+
+**Example**:
+```java
+@Rule(
+    name = "NVL to COALESCE",
+    priority = 100,        // Execute after critical fixes
+    category = FUNCTION_CONVERSION,
+    targetDatabases = {POSTGRESQL, MYSQL}
+)
+public class NvlToCoalesceRule implements SqlRule { ... }
+
+// Metadata extracted and stored:
+// - Name: "NVL to COALESCE"
+// - Priority: 100 (higher = earlier execution)
+// - Category: FUNCTION_CONVERSION (for discovery)
+// - Targets: PostgreSQL, MySQL (scope)
+```
+
+**Testing Strategy**:
+- Unit tests for RuleMetadata (immutability, validation)
+- Unit tests for @Rule annotation extraction
+- Integration tests for priority sorting (stable sort)
+- Backward compatibility tests (rules without @Rule work)
+
+**Status**: ✅ Accepted (v0.2)
+
+---
+
 ## Summary
 
-These 12 ADRs form the foundation of sql-rule-engine:
+These 13 ADRs form the foundation of sql-rule-engine:
 
 | ADR | Focus | Status |
 |-----|-------|--------|
 | 001-003 | Core technology choices | ✅ Accepted |
 | 004-007 | v0.1 engine design | ✅ Accepted |
 | 008-012 | Enterprise context & roadmap | ✅ Accepted |
+| 013 | v0.2 metadata & priority system | ✅ Accepted |
 
 Together, they establish a **stable, extensible, well-documented foundation** for a production-grade SQL migration framework.

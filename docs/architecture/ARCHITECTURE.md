@@ -117,9 +117,122 @@ public class RuleRegistry {
 - Rule enable/disable
 - Load rules from configuration files or plugins
 
+### 2.3.1 RuleRegistry v0.2 Enhancements
+
+**New capabilities**:
+```java
+public class RuleRegistry {
+    public void register(SqlRule rule)           // Add a rule (extracts metadata)
+    public List<SqlRule> getRules()              // Get all rules (registration order)
+    public List<SqlRule> getRulesByPriority()    // Get rules sorted by priority
+    public RuleMetadata getMetadata(SqlRule rule) // Get rule metadata
+}
+```
+
+**Metadata Extraction**:
+- Extracts metadata from @Rule annotation via reflection
+- Provides default metadata for rules without annotation
+- Supports stable priority sort (higher priority first, maintains registration order)
+
+**Design Pattern**:
+- Annotation-driven metadata declaration
+- Reflection-based metadata extraction at registration time
+- Immutable metadata value objects (Java 21 records)
+
 ---
 
-### 2.4 Specific Rule Implementations
+### 2.4 Rule Metadata System (v0.2)
+
+**Components**:
+
+**RuleMetadata Record**:
+```java
+public record RuleMetadata(
+    String name,
+    String version,
+    RuleCategory category,
+    int priority,
+    Set<DatabaseTarget> targetDatabases,
+    String description
+) { ... }
+```
+
+- Immutable value object (Java 21 record)
+- Validated constructor (fail-fast)
+- Unmodifiable database targets set
+- Provides rule identity and scope
+
+**@Rule Annotation**:
+```java
+@Retention(RetentionPolicy.RUNTIME)
+@Target(ElementType.TYPE)
+public @interface Rule {
+    String name();
+    String version() default "1.0";
+    RuleCategory category() default RuleCategory.GENERAL;
+    int priority() default 100;
+    DatabaseTarget[] targetDatabases() default {DatabaseTarget.POSTGRESQL};
+    String description() default "";
+}
+```
+
+- Declarative metadata specification
+- Runtime retention for reflection-based extraction
+- Sensible defaults for backward compatibility
+
+**RuleCategory Enum**:
+- FUNCTION_CONVERSION (NVL, COALESCE, DECODE)
+- DATE_CONVERSION (SYSDATE, CURRENT_TIMESTAMP)
+- STRING_CONVERSION (String manipulation)
+- NUMERIC_CONVERSION (Math functions)
+- SYSTEM_CONVERSION (Oracle-specific)
+- GENERAL (Miscellaneous)
+
+**DatabaseTarget Enum**:
+- POSTGRESQL
+- MYSQL
+- MSSQL
+- EXPERDB (eXperDB)
+
+---
+
+### 2.5 Priority-Based Execution (v0.2)
+
+**RuleEngine Priority Execution**:
+
+```
+Input SQL
+  ↓
+RuleRegistry.getRulesByPriority()  [sorted by priority, descending]
+  ↓
+For each rule (highest priority first):
+  - Check rule.supports(SQL)
+  - If true: SQL = rule.convert(SQL)
+  ↓
+Output SQL
+```
+
+**Priority Sort Characteristics**:
+- **Stable sort**: Higher priority executes first
+- **Same priority**: Maintains registration order
+- **No breaking changes**: Existing code unaffected
+
+**Example**:
+```
+Rules:
+  - Rule A: priority 100, registered first
+  - Rule B: priority 50
+  - Rule C: priority 100, registered second
+
+Execution order:
+  1. Rule A (priority 100, first registered)
+  2. Rule C (priority 100, second registered)
+  3. Rule B (priority 50)
+```
+
+---
+
+### 2.6 Specific Rule Implementations
 
 **NvlToCoalesceRule**:
 - **Purpose**: Convert Oracle NVL() to standard COALESCE()
